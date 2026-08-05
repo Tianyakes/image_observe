@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "image-observe": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "C:/Users/XYZ/Desktop/web/image_observe-main",
+        "python",
+        "-m",
+        "image_observe.server"
+      ]
+    }
+  }
+}

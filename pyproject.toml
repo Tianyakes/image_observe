@@ -1,0 +1,19 @@
+[project]
+name = "image-observe"
+version = "0.1.0"
+description = "通用 Agent 视觉接口: 图片理解 + Seedream 生图 (MCP server)"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0",
+    "openai>=1.40",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "playwright>=1.62.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/image_observe"]
