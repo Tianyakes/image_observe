@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>构图失衡样本</title>
+<style>
+  /* 故意失衡: 内容挤在左上角 (~12% 面积), 右上角深色块内放微按钮,
+     下方大片空白 — 视觉重心严重偏移, 大小比例悬殊 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #ffffff; color: #222222; }
+  .corner {
+    position: absolute; top: 0; left: 0;
+    width: 260px; padding: 12px; background: #f2f2f2;
+    font-size: 9px; line-height: 1.5;
+  }
+  .corner p { margin-bottom: 6px; }
+  .big-block {
+    position: absolute; top: 90px; right: 0;
+    width: 220px; height: 260px; background: #1a1a2e; color: #ffffff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .big-block h2 { font-size: 14px; margin-bottom: 12px; }
+  .tiny-btn {
+    width: 24px; height: 18px; font-size: 8px;
+    background: #e94560; color: #fff; border: 0; border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="corner">
+  <h1>密集文字区</h1>
+  <p>这里堆叠了大量小字号文本,内容全部挤在画面左上角,右侧与下方大面积空白,整个页面视觉重心严重偏置。</p>
+  <p>第二段继续堆叠文字以增加左上角的内容密度,让这里的像素占比明显高于其他区域,进一步放大失衡感。</p>
+  <p>第三段文字继续填充,左上角成为唯一的视觉集中点,而画面其余部分几乎没有任何元素来平衡构图。</p>
+</div>
+<div class="big-block">
+  <h2>超大色块</h2>
+  <button class="tiny-btn">点</button>
+</div>
+</body>
+</html>

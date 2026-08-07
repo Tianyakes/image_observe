@@ -28,13 +28,15 @@
 | inspect_element | 元素几何 + 特写评审 | Playwright + 豆包 |
 | diff_pages | 像素 diff(降采样 1280)+ 合成图 | Playwright(无豆包依赖时降级) |
 | audit_page | 6 项 DOM 无障碍,纯本地 | Playwright |
+| **aesthetic_audit** | **美术审核: 像素统计(配色/构图/留白/调色板) + 美术审核员 0-100 分** | Playwright + 豆包 |
 | search_images | 必应抓取 + **批量视觉验证**(多图合并) | 必应 + 豆包 |
 | generate_image / edit_image / generate_video / generate_3d | 媒体生成 | Ark API |
 
 模块职责(`src/image_observe/`):
 - `server.py` MCP 注册层(参数校验在此 + page 入口)
 - `page.py` 页面渲染/布局诊断/加载监控/设计审查接线
-- `design.py` **设计系统审查**(采集 JS + Python 判定 + hover 采样)——本轮新增
+- `design.py` **设计系统审查**(采集 JS + Python 判定 + hover 采样)
+- `aesthetic.py` **美术审核**(像素统计 + 调色板 + 美术评审)——2026-08-07 次轮新增
 - `vision.py` 视觉调用(异常分类/重试/fallback/模型标注)
 - `search.py` 必应抓取 + 批量验证
 - `ui_diff.py` 像素 diff
@@ -108,6 +110,16 @@
 - **交叉验证**:视觉 prompt 附最严重 2-3 条程序化发现,要求模型确认/反驳/补充;输出标注 `(视觉模型: X)`
 - **加载监控**:console error/pageerror/requestfailed/HTTP≥400/字体失败/图片失败(naturalWidth=0)
 
+## 3.4 美术审核(aesthetic.py,次轮新增)
+
+`aesthetic_audit(url, viewport_width=1440, viewport_height=900, timeout=30)` 第 13 个工具,专治**配色与大小比例严重失衡**。
+
+- **像素统计**(about:blank canvas,降采样最长边 360):背景=1px 边缘环量化众数色(深色模式天然适配,`edgeShare<55%` → stable=false 渐变/图片背景);内容掩码=加权 RGB 距离 ≥40;色簇 16 阶量化+曼哈顿≤144 合并;高饱和(>0.8)/色温/3x3 分区
+- **判定阈值**:C1 主色集中(<35% 缺主色 / >85% 单调 info)、C2 色板破碎(显著色>8)、C3 高饱和(≥8% warn / ≥20% error)、C4 分区过碎(≥5 格)、G1 内容占用(<2.5% warn / <1% error)、G2 重心偏移(>0.35 warn / >0.50 error)、G3 左右失衡(>0.65/0.80)、G4/G5 上下留白/偏上偏下(spanY<0.5 时);全局:stable=false 构图降 info、内容<2% 空页抑制构图
+- **美术评审**:五维度(构图/色彩/比例/留白/重心)逐点评,内嵌程序化指标佐证,"以画面为准不要编造";解析 `总分: NN/100`;定性 <40 严重失衡 / 40-60 失衡 / 60-80 一般 / >80 良好;解析失败用程序化兜底分(100-严重度加权,无发现 88)标注"(程序化估算)"
+- **调色板**:簇去噪(<1%)→ 主色 1 + 辅色(≥2%)+ 点缀色(与主/辅距>60),上限 8
+- 只审首屏;视觉失败降级不阻断
+
 ## 4. 验证方案与结果
 
 ### fixtures
@@ -125,6 +137,7 @@
 | diff_pages | 降采样生效, diff/合成图/视觉正常 |
 | 参数校验 | 中文错误正常 |
 | search_images(必应+批量) | 修复 302 后待最终确认(见遗留项) |
+| **aesthetic_audit 矩阵** | clean 72 分无构图误报 / violations 32 分仅 info / imbalanced G2-G5 全命中 20 分 / imbalanced-color C3❌+调色板 25 分 / 视觉失败降级兜底分正常 |
 
 ### 验证命令
 ```bash

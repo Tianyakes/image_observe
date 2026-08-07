@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>配色失衡样本</title>
+<style>
+  /* 故意失衡: 底部 25% 高饱和紫红横带 + 左侧 15% 高饱和蓝块, 白底 —
+     高饱和面积大, 分区色彩差异显著, 调色板应含 #ff0088 与 #1e50ff */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #ffffff; color: #222222; }
+  main { padding: 24px; max-width: 720px; }
+  .hot {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 25vh;
+    background: #ff0088;
+  }
+  .cool {
+    position: fixed; left: 0; top: 0; bottom: 25vh; width: 15vw;
+    background: #1e50ff;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>配色失衡页面</h1>
+  <p>页面底部是大面积高饱和紫红横带,左侧是同样高饱和的蓝色竖块,与白色背景形成强烈冲突,整体配色刺眼且缺乏协调。</p>
+  <p>两个高饱和色块面积巨大,视觉上互相争抢注意力,没有任何中性色来缓冲,属于典型的配色严重失衡。</p>
+</main>
+<div class="hot"></div>
+<div class="cool"></div>
+</body>
+</html>

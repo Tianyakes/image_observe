@@ -187,6 +187,24 @@ async def audit_page(url: str, timeout: int = 30) -> str:
 
 
 @server.tool()
+async def aesthetic_audit(
+    url: str,
+    viewport_width: int = 1440,
+    viewport_height: int = 900,
+    timeout: int = 30,
+) -> str:
+    """渲染网页并按美术标准审核视觉美感: 程序化像素统计 (配色/构图/留白/调色板) + 豆包美术审核员逐维度评审并打出 0-100 分, 截图保存到 output/pages/。约需 10~60 秒。适合排查配色与大小比例严重失衡的页面。
+
+    Args:
+        url: http(s):// 网址, 或本地 HTML 文件路径 / file:// URL。
+        viewport_width / viewport_height: 浏览器视口大小。
+        timeout: 页面加载超时秒数。
+    """
+    from . import aesthetic
+    return await aesthetic.aesthetic_audit(url, viewport_width, viewport_height, timeout)
+
+
+@server.tool()
 def extract_text(image: str, language: str | None = None) -> str:
     """从图片中提取文字 (OCR), 逐行返回原文。
 
