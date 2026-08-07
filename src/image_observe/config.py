@@ -15,7 +15,8 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 ARK_API_KEY = os.environ.get("ARK_API_KEY")
-VISION_MODEL = os.environ.get("VISION_MODEL", "doubao-seed-2-0-lite-260428")
+VISION_MODEL = os.environ.get("VISION_MODEL", "doubao-seed-2-0-pro-260215")
+VISION_MODEL_FALLBACK = os.environ.get("VISION_MODEL_FALLBACK", "doubao-seed-evolving")
 IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "doubao-seedream-4-5-251128")
 EDIT_MODEL = os.environ.get("EDIT_MODEL", "doubao-seededit-3-0-i2i")
 VIDEO_MODEL = os.environ.get("VIDEO_MODEL", "doubao-seedance-2-0-260128")

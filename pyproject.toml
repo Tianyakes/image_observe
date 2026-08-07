@@ -1,6 +1,6 @@
 [project]
 name = "image-observe"
-version = "0.1.0"
+version = "0.4.0"
 description = "通用 Agent 视觉接口: 图片理解 + Seedream 生图 (MCP server)"
 requires-python = ">=3.10"
 dependencies = [

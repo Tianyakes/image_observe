@@ -3,8 +3,12 @@
 流程: 创建任务 -> 轮询 -> 取视频直链并下载到 output/videos/。
 生成通常需要 1~3 分钟。
 """
+import logging
+
 from . import config
 from .utils import ark_get, ark_post, download, image_to_data_url, wait_task
+
+logger = logging.getLogger(__name__)
 
 TASK_PATH = "/contents/generations/tasks"
 
@@ -56,7 +60,7 @@ def generate_video(
 
     created = ark_post(TASK_PATH, payload, timeout=300)
     task_id = created["id"]
-    print(f"[video] 任务已创建: {task_id}")
+    logger.info(f"[video] 任务已创建: {task_id}")
 
     data = wait_task(
         lambda tid: ark_get(f"{TASK_PATH}/{tid}"),

@@ -46,7 +46,7 @@ def edit_image(
     image: str,
     prompt: str,
     model: str | None = None,
-    size: str = "2K",
+    size: str | None = None,
     watermark: bool = True,
     scale: int | None = None,
 ) -> str:
@@ -56,7 +56,7 @@ def edit_image(
         image: 源图本地绝对路径或 http(s) URL。
         prompt: 编辑指令, 如 "把背景换成星空, 保持主体不变"。
         model: 不填用默认 doubao-seededit-3-0-i2i-250628。
-        size: "1K" / "2K" / "4K" 或像素值。
+        size: 可选 "1K"/"2K"/"4K" 或像素值, 不填保持源图比例 ("adaptive")。
         watermark: 是否添加 "AI生成" 水印。
         scale: 指令遵循强度 1~10。
     """
@@ -98,16 +98,18 @@ async def analyze_page(
     viewport_width: int = 1440,
     viewport_height: int = 900,
     timeout: int = 30,
+    depth: str = "standard",
 ) -> str:
-    """渲染并分析网页: 程序化布局诊断 (重叠/溢出/截断/字号) + 豆包视觉模型设计描述, 全部以文字返回, 截图保存到 output/pages/。约需 10~60 秒。
+    """渲染并分析网页: 程序化布局诊断 (重叠/溢出/截断/字号/对比度) + 设计系统审查 (排版阶梯/间距/色彩/圆角/触摸目标/动效等) + 加载监控 (JS 错误/字体图片失败) + 豆包视觉模型设计描述 (自动复核程序化发现), 全部以文字返回, 截图保存到 output/pages/。约需 10~60 秒。
 
     Args:
         url: http(s):// 网址, 或本地 HTML 文件路径 / file:// URL。
         viewport_width / viewport_height: 浏览器视口大小。
         timeout: 页面加载超时秒数。
+        depth: 审查深度 "quick" (基础布局+加载监控) / "standard" (默认, 全部静态设计检查) / "deep" (standard + hover 交互态采样)。
     """
     from . import page
-    return await page.analyze_page(url, viewport_width, viewport_height, timeout)
+    return await page.analyze_page(url, viewport_width, viewport_height, timeout, depth)
 
 
 @server.tool()
@@ -204,6 +206,8 @@ def search_images(query: str, count: int = 5, verify: bool = True) -> str:
         count: 最多返回几张。
         verify: 是否用视觉模型逐张验证内容是否符合需求 (建议开启)。
     """
+    if not isinstance(count, int) or count < 1 or count > 20:
+        raise ValueError("参数错误: count 必须在 1~20 之间")
     return search.search_images(query, count, verify)
 
 

@@ -8,7 +8,7 @@
 | `edit_image` | 图像编辑: 自然语言指令修改图片 (消除/替换/风格/光影) | SeedEdit 3.0 |
 | `generate_video` | 视频生成: 文生视频 / 首帧图生视频 (1~3 分钟), 保存到 `output/videos/` | Seedance 系列 / Wan2.1 |
 | `generate_3d` | 3D 模型生成: 图生 3D (数分钟), 保存到 `output/3d/` | Seed3D 系列 |
-| `describe_image` | 图片理解: 输入图片路径/URL, 返回文字描述 | 豆包视觉模型 (seed-2-0-lite) |
+| `describe_image` | 图片理解: 输入图片路径/URL, 返回文字描述 | 豆包视觉模型 (seed-2-0-pro) |
 | `search_images` | 图片搜索: 网络搜图 + 视觉验证内容, 返回验证过的链接 | 必应国内版 + 豆包验证 |
 | `analyze_page` | 网页分析: 渲染页面, 程序化布局诊断 (重叠/溢出/截断/字号/对比度) + 豆包视觉模型设计描述, 全部以文字返回, 截图存 `output/pages/` | Playwright + 豆包视觉 |
 | `analyze_responsive` | 响应式分析: 375/768/1440 多视口逐档布局诊断 + 跨视口对比 (仅小屏出现的问题), 仅最宽视口调一次视觉模型 | Playwright + 豆包视觉 |
@@ -25,14 +25,15 @@
    - 编辑: `doubao-seededit-3-0-i2i`
    - 视频: `doubao-seedance-2-0-260128` (或 1.0/1.5/2.5 系列, i2v 模型见下)
    - 3D: `doubao-seed3d-2-0-260328` (或 1-0-250928)
-   - 理解: 视觉模型 (如 `doubao-seed-1-6-vision-250815`)
+   - 理解: 视觉模型 (如 `doubao-seed-2-0-pro-260215`), 主模型失败/未开通时自动切换备用 `doubao-seed-evolving` (均需开通)
+   - 检索: `doubao-embedding-vision-251215` (图文多模态向量化, 供语义检索/以图搜图)
 3. Python 3.10+ 与 [uv](https://docs.astral.sh/uv/)
 4. Edge 或 Chrome (二选一, `analyze_page` 渲染用, 二选一即可; 都没有则运行 `uv run playwright install chromium` 下载内置浏览器)
 
 ## 配置
 
 ```bash
-cp .env.example .env   # 填入 ARK_API_KEY, 可按需改 VISION_MODEL / IMAGE_MODEL
+cp .env.example .env   # 填入 ARK_API_KEY, 可按需改 VISION_MODEL / VISION_MODEL_FALLBACK / IMAGE_MODEL / EMBEDDING_MODEL
 ```
 
 `.env` 已被 gitignore, 不会提交。被其他项目连接时, 也可以用 `--env` 直接传 key (见下)。

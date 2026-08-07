@@ -3,8 +3,12 @@
 流程: 创建任务 -> 轮询 -> 取文件直链 (zip) 并下载到 output/3d/。
 生成通常需要数分钟。
 """
+import logging
+
 from . import config
 from .utils import ark_get, ark_post, download, image_to_data_url, wait_task
+
+logger = logging.getLogger(__name__)
 
 TASK_PATH = "/contents/generations/tasks"
 
@@ -37,7 +41,7 @@ def generate_3d(
     }
     created = ark_post(TASK_PATH, payload, timeout=300)
     task_id = created["id"]
-    print(f"[3d] 任务已创建: {task_id}")
+    logger.info(f"[3d] 任务已创建: {task_id}")
 
     data = wait_task(
         lambda tid: ark_get(f"{TASK_PATH}/{tid}"),

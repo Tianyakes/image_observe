@@ -12,7 +12,7 @@ def edit_image(
     image: str,
     prompt: str,
     model: str | None = None,
-    size: str = "adaptive",
+    size: str | None = None,
     watermark: bool = True,
     scale: int | None = None,
 ) -> str:
@@ -22,7 +22,7 @@ def edit_image(
         image: 源图本地绝对路径或 http(s) URL。
         prompt: 编辑指令, 如 "把背景换成星空, 保持主体不变"。
         model: 默认 doubao-seededit-3-0-i2i。
-        size: 默认 "adaptive" (保持源图比例); 也可传 "1K"/"2K"/"4K" 或像素值。
+        size: 可选 "1K"/"2K"/"4K" 或像素值, 不填保持源图比例 ("adaptive")。
         watermark: 是否添加 "AI生成" 水印。
         scale: 指令遵循强度 (SeedEdit 用 guidance_scale, 范围 1~10)。
     """
@@ -30,7 +30,7 @@ def edit_image(
         "model": model or config.EDIT_MODEL,
         "image": image_to_data_url(image),
         "prompt": prompt,
-        "size": size,
+        "size": size or "adaptive",
         "response_format": "url",
         "watermark": watermark,
     }

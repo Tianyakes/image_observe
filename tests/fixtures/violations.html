@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设计违规样本</title>
+<style>
+  /* 故意违规: 扁平层级 / 间距单调 / 行宽超长 / 破折号 / 重复 CTA / 触摸目标小 /
+     hover 无反馈 / 无限动画 / 布局属性动画 / 坏图 / console.error / 未捕获 throw /
+     字体加载失败 / 对比度不足按钮 / em-dash / eyebrow 竞争 / 圆角松散 */
+  @font-face { font-family: 'BrokenFont'; src: url('missing.woff2') format('woff2'); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'BrokenFont', sans-serif; background: #ffffff; color: #333333; }
+  header { height: 100px; background: #f8f8f8; display: flex; align-items: center; padding: 0 16px; }
+  nav a { margin-right: 12px; }
+  h1 { font-size: 17px; }  /* 与正文几乎同字号 → 扁平层级 */
+  h2 { font-size: 17px; }
+  p  { font-size: 16px; }
+  .hero { height: 80vh; padding: 24px; display: flex; flex-direction: column; justify-content: center; }
+  .hero h1 { line-height: 1.2; width: 60%; }
+  .hero p { width: 90%; }
+  .cards { display: flex; gap: 24px; padding: 24px; }
+  .card { flex: 1; padding: 8px 8px; background: #eeeeee; }  /* cramped padding */
+  .card p { width: 100%; }
+  .wide { width: 1200px; margin: 24px 0; }   /* 行宽超长 */
+  .tiny-btn { width: 28px; height: 28px; background: #cccccc; border: 0; border-radius: 6px; }
+  .no-hover { background: #eeeeee; padding: 10px 20px; border: 0; }
+  .no-hover:hover { background: #eeeeee; }    /* hover 无反馈 */
+  .spin { width: 40px; height: 40px; border-radius: 50%; border: 4px solid #ddd; border-top-color: #333; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .grow { animation: grow 2s ease-in-out infinite; }
+  @keyframes grow { from { width: 100px; } to { width: 300px; } }  /* 布局属性动画 */
+  .bounce { animation: b 1s cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }  /* 弹跳缓动 */
+  @keyframes b { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  .eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #888; }
+  .low-contrast { background: #f0c0c0; color: #ffdddd; padding: 12px; }  /* 按钮对比度不足 */
+  .r1 { border-radius: 4px; } .r2 { border-radius: 8px; } .r3 { border-radius: 12px; } .r4 { border-radius: 16px; } .r5 { border-radius: 24px; }
+  .long-line { width: 1100px; }
+</style>
+</head>
+<body>
+<header>
+  <nav>
+    <a href="#a">开始使用</a><a href="#b">了解我们</a><a href="#c">定价</a><a href="#d">文档</a>
+  </nav>
+</header>
+<section class="hero">
+  <h1>这是一个非常长的标题标题标题标题标题标题标题标题标题标题标题标题</h1>
+  <p>这是一段比较长的副文本描述,用来测试 hero 副文是否超过四行限制,同时测试行宽是否过长,需要写足够多的文字来撑满宽度,这里继续补充一些文字确保长度足够。</p>
+  <span class="eyebrow">FEATURE</span>
+  <span class="eyebrow" style="display:block; margin-top: 40px;">BENEFIT</span>
+  <button class="low-contrast" style="margin-top: 24px;">立即开始</button>
+  <button class="low-contrast" style="margin-top: 8px;">立即开始</button>
+</section>
+<section class="cards">
+  <div class="card r1"><h2>卡片一</h2><p>卡片内容文字这里是一些描述文本。</p></div>
+  <div class="card r2"><h2>卡片二</h2><p>卡片内容文字这里是一些描述文本。</p></div>
+  <div class="card r3"><h2>卡片三</h2><p>卡片内容文字这里是一些描述文本。</p></div>
+</section>
+<p class="long-line">这是一个非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的段落——用来测试行宽是否超标——同时测试破折号滥用的问题。</p>
+<p>另一段文字用来统计 em-dash 数量——这里一个——那里一个——再一个——第五个。</p>
+<button class="tiny-btn">小</button>
+<button class="no-hover">没有悬停反馈的按钮</button>
+<div class="spin"></div>
+<div class="grow">布局动画</div>
+<div class="bounce">弹跳</div>
+<img src="missing-image.png" alt="" width="100" height="100">
+<script>
+  console.error("故意的 console error");
+  window.addEventListener('load', function () { throw new Error("故意的未捕获错误"); });
+</script>
+</body>
+</html>

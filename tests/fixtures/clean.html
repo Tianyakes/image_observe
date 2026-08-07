@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>合规样本</title>
+<style>
+  /* 刻意合规: 层级分明 / 间距有节奏 / 行宽受控 / 圆角统一 / 对比度达标 /
+     hover 有反馈 / 无破折号 / 单 CTA / 触摸目标 ≥44px */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'PingFang SC', sans-serif; background: #ffffff; color: #222222; }
+  header { height: 64px; background: #ffffff; border-bottom: 1px solid #eeeeee; display: flex; align-items: center; padding: 0 32px; }
+  nav a { margin-right: 16px; color: #444444; text-decoration: none; font-size: 15px; }
+  nav a:hover { color: #000000; }
+  .hero { height: 80vh; padding: 96px 32px 48px; max-width: 720px; }
+  h1 { font-size: 48px; line-height: 1.15; margin-bottom: 16px; }
+  h2 { font-size: 32px; margin-top: 40px; margin-bottom: 12px; }
+  p { font-size: 17px; line-height: 1.7; color: #444444; margin-bottom: 24px; }
+  .card { background: #f5f5f5; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+  .card p { margin-bottom: 0; }
+  .btn { display: inline-block; background: #1a1a1a; color: #ffffff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-size: 16px; }
+  .btn:hover { background: #333333; }
+  .btn:active { background: #000000; }
+  .list { display: flex; gap: 24px; margin-top: 32px; }
+  .item { flex: 1; padding: 32px 24px; background: #fafafa; border-radius: 12px; }
+  .tag { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #666666; }
+  img { max-width: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <nav><a href="#a">产品</a><a href="#b">定价</a><a href="#c">文档</a><a href="#d">关于</a></nav>
+</header>
+<section class="hero">
+  <span class="tag">PRODUCT</span>
+  <h1>清晰的信息层级</h1>
+  <p>一段有节奏的说明文字,配合受控的行宽与行高,让页面读起来从容有序。这里的内容长度刚刚好,不会撑爆折叠线。</p>
+  <a class="btn" href="#get">立即开始</a>
+</section>
+<section>
+  <h2>三大优势</h2>
+  <div class="list">
+    <div class="item"><h3>快速</h3><p>加载快,交互响应及时。</p></div>
+    <div class="item"><h3>稳定</h3><p>可靠性优先,减少意外。</p></div>
+    <div class="item"><h3>简洁</h3><p>克制设计,专注核心。</p></div>
+  </div>
+</section>
+<section>
+  <h2>关于我们</h2>
+  <p>这里是一段关于公司的介绍文字。我们相信好的设计来自对细节的坚持,而细节来自对用户的尊重。保持一致性,保持克制,保持真实。</p>
+  <div class="card"><p>引用块或卡片内容,统一圆角与内边距,整体一致。</p></div>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjZWVlZWVlIi8+PC9zdmc+" alt="示例图">
+</section>
+</body>
+</html>

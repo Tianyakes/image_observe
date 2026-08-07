@@ -5,11 +5,22 @@ playwright 在函数内延迟导入: 缺依赖时只影响 analyze_page, 不影�
 """
 import asyncio
 import collections
-import time
 from pathlib import Path
 
-from . import vision
-from .utils import OUTPUT_DIR
+from . import design, vision
+from .utils import OUTPUT_DIR, unique_filename
+
+# ── 模块级常量 ──────────────────────────────────────────────
+MAX_FULLPAGE_HEIGHT = 12000    # 全页截图最大高度(px), 超出仅截首屏
+MAX_ELEMENTS = 400             # DOM 元素采样上限, 仅覆盖文档前 N 个元素
+OVERLAP_RATIO = 0.3            # 重叠交集占比阈值 (交集 > 较小元素此比例则报告)
+LARGE_TEXT_PX = 24             # WCAG 大字号阈值 (>=24px)
+LARGE_BOLD_TEXT_PX = 18.66     # WCAG 粗体大字号阈值 (>=18.66px 且 bold)
+TINY_TEXT_PX = 12              # 小字号警告阈值 (<12px)
+NETWORK_IDLE_TIMEOUT_MS = 5000 # networkidle 等待上限 (尽力)
+RENDER_STABILIZE_MS = 500      # 渲染稳定等待 (ms)
+TEXT_SNIPPET_LEN = 30          # 元素文本截断长度 (字符)
+# ────────────────────────────────────────────────────────────
 
 # 布局指标提取: 单次 evaluate 返回 JSON, 几何分析在 Python 侧完成
 _LAYOUT_JS = """
@@ -76,7 +87,8 @@ _LAYOUT_JS = """
     if (t && info.tag !== 'html' && info.tag !== 'body') {
       info.text = t.slice(0, 30);
       info.fontW = parseInt(s.fontWeight) || 400;
-      info.fcolor = (parseRGBA(s.color) || []).slice(0, 3);  // 去掉 alpha
+      const pc = parseRGBA(s.color);
+      if (pc) { info.fcolor = pc.slice(0, 3); info.falpha = pc[3]; }
       info.bg = effBg(el);
     }
     const hasContent = el.id || cls || t.length > 0
@@ -131,29 +143,75 @@ async def _launch_browser():
     )
 
 
-async def _render_page(browser, url: str, width: int, height: int, timeout_s: int):
-    """打开页面并等待渲染稳定, 返回 page 对象 (browser 由调用方关闭)。"""
+async def _render_page(
+    browser,
+    url: str,
+    width: int,
+    height: int,
+    timeout_s: int,
+    monitor: bool = False,
+    events: dict | None = None,
+):
+    """打开页面并等待渲染稳定, 返回 page 对象 (browser 由调用方关闭)。
+
+    monitor=True 时挂载加载监控: console 错误/未捕获异常/请求失败/HTTP>=400/
+    字体加载失败/图片加载失败, 收集到调用方传入的 events dict。
+    """
     context = await browser.new_context(
         viewport={"width": width, "height": height}, ignore_https_errors=True
     )
     page = await context.new_page()
+    if monitor and events is not None:
+        events["console"] = []
+        events["pageerror"] = []
+        events["failed"] = []
+        events["http"] = []
+        events["fonts"] = []
+        events["imgfail"] = []
+        page.on("console", lambda m: events["console"].append(m.text) if m.type in ("error", "warning") else None)
+        page.on("pageerror", lambda e: events["pageerror"].append(str(e)))
+        page.on("requestfailed", lambda r: events["failed"].append(f"{r.url} ({r.failure})"))
+        page.on("response", lambda r: events["http"].append(f"{r.status} {r.url}") if r.status >= 400 else None)
     try:
         await page.goto(url, timeout=timeout_s * 1000, wait_until="load")
     except Exception as e:
         await context.close()
         raise RuntimeError(f"无法加载页面: {e}") from e
     try:
-        await page.wait_for_load_state("networkidle", timeout=5000)  # 尽力而为
+        await page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT_MS)  # 尽力而为
     except Exception:
         pass
-    await page.wait_for_timeout(1000)  # 等待字体/异步渲染稳定
+    await page.wait_for_timeout(RENDER_STABILIZE_MS)
+    # 等待字体加载完成 (超时 3s 尽力, 失败忽略)
+    try:
+        await asyncio.wait_for(
+            page.evaluate("document.fonts.ready.then(() => true).catch(() => true)"),
+            timeout=3,
+        )
+    except Exception:
+        pass
+    # 页面内字体/图片加载状态 (监控模式下)
+    if monitor and events is not None:
+        try:
+            events["fonts"] = await page.evaluate(
+                "[...document.fonts].filter(f => f.status === 'error').map(f => f.family)"
+            )
+        except Exception:
+            pass
+        try:
+            events["imgfail"] = await page.evaluate(
+                "[...document.images].filter(i => i.complete && i.naturalWidth === 0)"
+                ".map(i => i.currentSrc || i.src).slice(0, 5)"
+            )
+        except Exception:
+            pass
     return page
 
 
 async def _save_screenshot(page, full_page: bool) -> Path:
     target = OUTPUT_DIR / "pages"
     target.mkdir(parents=True, exist_ok=True)
-    path = target / f"page_{int(time.time())}.png"
+    path = target / unique_filename("page", ".png")
     await page.screenshot(path=str(path), full_page=full_page, timeout=60_000)
     return path
 
@@ -184,7 +242,7 @@ def _contrast_ratio(fg: list, bg: list) -> float:
 
 def _is_large_text(e: dict) -> bool:
     """WCAG 大字号: >=24px, 或 >=18.66px 且粗体 (>=700)。"""
-    return e["font"] >= 24 or (e["font"] >= 18.66 and (e.get("fontW") or 400) >= 700)
+    return e["font"] >= LARGE_TEXT_PX or (e["font"] >= LARGE_BOLD_TEXT_PX and (e.get("fontW") or 400) >= 700)
 
 
 def _overlap_pairs(els: list) -> list:
@@ -204,7 +262,7 @@ def _overlap_pairs(els: list) -> list:
             if inter <= 0:
                 continue
             ratio = inter / min(a["w"] * a["h"], b["w"] * b["h"])
-            if ratio > 0.3:
+            if ratio > OVERLAP_RATIO:
                 pairs.append((ratio, a, b, ix, iy))
     return pairs
 
@@ -217,7 +275,7 @@ def _analyze_layout(metrics: dict) -> str:
     visible = [e for e in els if not e.get("zero") and e["w"] > 0 and e["h"] > 0]
     lines = []
 
-    summary = f"视口 {vw}x{vh}, 页面总高 {doc_h}px, 统计元素 {len(els)} 个"
+    summary = f"视口 {vw}x{vh}, 页面总高 {doc_h}px, 统计元素 {len(els)} 个 (采样上限 {MAX_ELEMENTS})"
     if metrics.get("hasHScroll"):
         summary += f" — 文档宽 {doc_w}px > 视口, 存在横向滚动"
     lines.append(summary)
@@ -226,7 +284,7 @@ def _analyze_layout(metrics: dict) -> str:
     overlaps = _overlap_pairs(els)
     overlaps.sort(key=lambda t: t[0], reverse=True)
     if overlaps:
-        lines.append(f"[重叠] {len(overlaps)} 处 (交集 > 较小元素 30%):")
+        lines.append(f"[重叠] {len(overlaps)} 处 (交集 > 较小元素 {OVERLAP_RATIO:.0%}):")
         for ratio, a, b, ix, iy in overlaps[:15]:
             lines.append(f"  - {_fmt_el(a)} 与 {_fmt_el(b)} 重叠 {ratio:.0%} ({ix}x{iy}px)")
         if len(overlaps) > 15:
@@ -273,14 +331,16 @@ def _analyze_layout(metrics: dict) -> str:
     fonts = collections.Counter(e["font"] for e in els if e["font"] > 0)
     if fonts:
         top = ", ".join(f"{size}px(×{n})" for size, n in fonts.most_common(3))
-        small = sum(n for size, n in fonts.items() if size < 12)
-        lines.append(f"[字号] 主要字号: {top}; 最小 {min(fonts)}px; <12px 共 {small} 个")
+        small = sum(n for size, n in fonts.items() if size < TINY_TEXT_PX)
+        lines.append(f"[字号] 主要字号: {top}; 最小 {min(fonts)}px; <{TINY_TEXT_PX}px 共 {small} 个")
 
     # 对比度 (WCAG): 正文 4.5:1, 大字号 3:1; 背景含图片/渐变无法精确计算
     contrast = []
     bg_image_n = 0
     for e in els:
         if not e.get("text") or not e.get("fcolor"):
+            continue
+        if e.get("falpha", 1) == 0:  # 全透明文本无实际渲染, 跳过对比度判定
             continue
         bg = e.get("bg") or {}
         if bg.get("rgb") is None:
@@ -316,42 +376,138 @@ async def _describe_screenshot(path: Path, prompt: str = _VISION_PROMPT) -> str:
         return f"(视觉描述不可用: {e})"
 
 
+_LEVEL_MARK = {"error": "❌ ", "warn": "⚠ ", "info": ""}
+
+
+def _format_design(findings: list[dict]) -> list[str]:
+    """把设计审查 Finding 按分区聚合为报告文本行。"""
+    if not findings:
+        return []
+    by_section: dict[str, list[dict]] = {}
+    for f in findings:
+        by_section.setdefault(f["分区"], []).append(f)
+    lines = []
+    for section, fs in by_section.items():
+        lines.append(f"【{section}】")
+        for f in fs:
+            lines.append(f"- {_LEVEL_MARK.get(f.get('等级', ''), '')}{f['名称']}: {f['依据']}")
+            lines.append(f"  建议: {f['建议']}")
+        lines.append("")
+    return lines
+
+
+def _top_findings(findings: list[dict], n: int = 3) -> list[dict]:
+    """按严重度取 top N: error > warn > info, 同等级保持原序。"""
+    order = {"error": 0, "warn": 1, "info": 2}
+    return sorted(findings, key=lambda f: order.get(f.get("等级"), 3))[:n]
+
+
+def _format_loading(events: dict) -> list[str]:
+    """【加载与渲染】监控报告: 无监控数据返回空, 有事件列出, 全绿则确认。"""
+    if not events:
+        return []
+    lines = ["【加载与渲染】"]
+    errs = []
+    if events.get("pageerror"):
+        errs.append(f"- 未捕获 JS 异常 {len(events['pageerror'])} 个: {'; '.join(events['pageerror'][:3])}")
+    if events.get("failed"):
+        errs.append(f"- 请求失败 {len(events['failed'])} 个: {'; '.join(events['failed'][:3])}")
+    if events.get("console"):
+        errs.append(f"- console 错误/警告 {len(events['console'])} 条: {'; '.join(events['console'][:3])}")
+    if events.get("fonts"):
+        errs.append(f"- 字体加载失败: {', '.join(events['fonts'][:3])}")
+    if events.get("imgfail"):
+        errs.append(f"- 图片加载失败 {len(events['imgfail'])} 张: {'; '.join(events['imgfail'][:3])}")
+    if events.get("http"):
+        errs.append(f"- HTTP ≥400 响应 {len(events['http'])} 个: {'; '.join(events['http'][:3])}")
+    if errs:
+        lines += errs
+    else:
+        lines.append("- 无 JS 错误/请求失败/字体或图片加载失败, 渲染稳定")
+    return lines
+
+
 async def analyze_page(
     url: str,
     viewport_width: int = 1440,
     viewport_height: int = 900,
     timeout: int = 30,
+    depth: str = "standard",
 ) -> str:
-    """渲染并分析网页, 返回纯文本报告 (布局诊断 + 视觉描述 + 截图路径)。"""
+    """渲染并分析网页, 返回纯文本报告 (布局诊断 + 设计系统审查 + 加载监控 + 视觉描述 + 截图路径)。
+
+    depth: "quick" (基础布局 + 加载监控) / "standard" (默认, 全部静态设计检查) /
+           "deep" (standard + hover 交互态采样)。
+    """
+    if not (0 < viewport_width <= 4096):
+        raise ValueError(f"参数错误: viewport_width 需 >0 且 ≤4096, 当前 {viewport_width}")
+    if not (0 < viewport_height <= 4096):
+        raise ValueError(f"参数错误: viewport_height 需 >0 且 ≤4096, 当前 {viewport_height}")
+    if not (1 <= timeout <= 300):
+        raise ValueError(f"参数错误: timeout 需 1~300 秒, 当前 {timeout}")
+    if depth not in ("quick", "standard", "deep"):
+        raise ValueError(f"参数错误: depth 需为 quick/standard/deep, 当前 {depth}")
     target = _normalize_url(url)
     pw = browser = None
+    screenshot = None
+    findings: list[dict] = []
+    events: dict = {}
     try:
         pw, browser = await _launch_browser()
-        page = await _render_page(browser, target, viewport_width, viewport_height, timeout)
-        metrics = await page.evaluate(_LAYOUT_JS)
+        page = await _render_page(
+            browser, target, viewport_width, viewport_height, timeout,
+            monitor=depth != "quick", events=events,
+        )
+        try:
+            metrics = await page.evaluate(_LAYOUT_JS)
+        except Exception as e:
+            raise RuntimeError(f"页面脚本执行失败: {e}") from e
 
         # 超高页面降级为视口截图 (豆包视觉模型对超长图识别差, 且避免引入 Pillow)
-        full_page = metrics["doc"]["h"] <= 12000
+        full_page = metrics["doc"]["h"] <= MAX_FULLPAGE_HEIGHT
         screenshot = await _save_screenshot(page, full_page=full_page)
 
-        parts = ["【布局诊断】"]
-        if not full_page:
-            parts.append("注: 页面总高超过 12000px, 截图仅含首屏 (布局指标仍为全页数据)。")
-        parts.append(_analyze_layout(metrics))
-        parts += ["", "【视觉描述】", await _describe_screenshot(screenshot)]
-        parts += ["", f"【截图已保存】{screenshot}"]
-        return "\n".join(parts)
+        # 设计系统审查 (standard/deep): 采集与判定与布局诊断独立, 互不影响
+        if depth != "quick":
+            try:
+                design_metrics = await page.evaluate(design._DESIGN_JS)
+            except Exception:
+                design_metrics = None
+            if design_metrics:
+                findings = design.analyze_design(design_metrics, depth, viewport_width)
+                if depth == "deep":
+                    findings += await design.collect_hover_states(page)
     finally:
         if browser is not None:
             await browser.close()
+            browser = None
         if pw is not None:
             await pw.stop()
+            pw = None
+
+    # 截图已落盘, 浏览器已关闭; 以下纯分析 (不依赖浏览器)
+    parts = ["【布局诊断】"]
+    if not full_page:
+        parts.append(f"注: 页面总高超过 {MAX_FULLPAGE_HEIGHT}px, 截图仅含首屏 (布局指标仍为全页数据)。")
+    parts.append(_analyze_layout(metrics))
+    parts += _format_design(findings)
+    parts += _format_loading(events)
+    prompt = _VISION_PROMPT
+    if findings:
+        prompt += "\n\n【程序化发现复核】以下是程序化检测发现的最严重问题, 请逐一确认/反驳/补充:\n" + \
+            "\n".join(f"- {f['依据']}" for f in _top_findings(findings, 3))
+    parts += ["", "【视觉描述】", await _describe_screenshot(screenshot, prompt)]
+    parts += ["", f"【截图已保存】{screenshot}"]
+    return "\n".join(parts)
 
 
 async def _render_and_metrics(browser, url: str, width: int, height: int, timeout_s: int):
     """渲染并提取布局指标, 返回 (page, metrics)。"""
     page = await _render_page(browser, url, width, height, timeout_s)
-    metrics = await page.evaluate(_LAYOUT_JS)
+    try:
+        metrics = await page.evaluate(_LAYOUT_JS)
+    except Exception as e:
+        raise RuntimeError(f"页面脚本执行失败: {e}") from e
     return page, metrics
 
 
@@ -372,7 +528,7 @@ def _layout_signals(metrics: dict) -> dict:
         "clipped": len(clipped),
         "zeros": sum(1 for e in els if e.get("zero")),
         "below": sum(1 for e in visible if e["y"] >= vh),
-        "smallFont": sum(1 for f in fonts if f < 12),
+        "smallFont": sum(1 for f in fonts if f < TINY_TEXT_PX),
     }
 
 
@@ -392,6 +548,17 @@ async def analyze_responsive(
     默认视口 [[375,812],[768,1024],[1440,900]] 覆盖手机/平板/桌面。
     视觉模型只调用一次 (最宽视口截图), 各视口截图保存到 output/pages/。
     """
+    if not (1 <= timeout <= 300):
+        raise ValueError(f"参数错误: timeout 需 1~300 秒, 当前 {timeout}")
+    if viewports is not None:
+        for i, vp in enumerate(viewports):
+            if not (isinstance(vp, (list, tuple)) and len(vp) == 2):
+                raise ValueError(f"参数错误: viewports[{i}] 需为 [w, h] 格式, 当前 {vp}")
+            w, h = vp
+            if not (0 < w <= 4096):
+                raise ValueError(f"参数错误: viewports[{i}] 宽度需 >0 且 ≤4096, 当前 {w}")
+            if not (0 < h <= 4096):
+                raise ValueError(f"参数错误: viewports[{i}] 高度需 >0 且 ≤4096, 当前 {h}")
     target = _normalize_url(url)
     vps = [tuple(v) for v in (viewports or [[375, 812], [768, 1024], [1440, 900]])]
     pw = browser = None
@@ -400,58 +567,66 @@ async def analyze_responsive(
         rendered = []
         for w, h in vps:
             page, metrics = await _render_and_metrics(browser, target, w, h, timeout)
+            design_metrics = None
+            try:
+                design_metrics = await page.evaluate(design._DESIGN_JS)
+            except Exception:
+                pass
             shot = await _save_screenshot(page, full_page=False)
             await page.context.close()
-            rendered.append(((w, h), metrics, shot))
-
-        parts = []
-        for (w, h), metrics, shot in rendered:
-            parts.append(f"【视口 {w}x{h}】截图: {shot}")
-            parts.append(_analyze_layout(metrics))
-            parts.append("")
-
-        # 跨视口对比
-        names = {
-            "hscroll": "横向滚动", "overlaps": "元素重叠", "offRight": "横向溢出",
-            "clipped": "内容截断/溢出", "zeros": "零尺寸元素", "below": "首屏外元素",
-            "smallFont": "小字号(<12px)",
-        }
-        parts.append("【跨视口对比】")
-        found_any = False
-        for key, name in names.items():
-            present = [f"{w}x{h}" for (w, h), m, _ in rendered if _layout_signals(m)[key]]
-            if present:
-                found_any = True
-                parts.append(f"- {name}: {', '.join(present)}")
-        largest = max(vps, key=lambda v: v[0] * v[1])
-        smallest = min(vps, key=lambda v: v[0] * v[1])
-        if smallest != largest:
-            sig_small = _layout_signals(
-                next(m for (w, h), m, _ in rendered if (w, h) == smallest)
-            )
-            sig_large = _layout_signals(
-                next(m for (w, h), m, _ in rendered if (w, h) == largest)
-            )
-            only_small = [
-                name for key, name in names.items()
-                if sig_small[key] and not sig_large[key]
-            ]
-            if only_small:
-                found_any = True
-                parts.append(f"- 仅 {smallest[0]}x{smallest[1]} 出现: {', '.join(only_small)}")
-        if not found_any:
-            parts.append("- 各视口均未发现明显布局问题。")
-
-        # 视觉: 只分析最大面积视口的截图 (控制 API 成本)
-        largest_shot = next(shot for (w, h), _, shot in rendered if (w, h) == largest)
-        parts += ["", f"【视觉描述 (最宽视口 {largest[0]}x{largest[1]})】",
-                  await _describe_screenshot(largest_shot, _RESPONSIVE_VISION_PROMPT)]
-        return "\n".join(parts)
+            rendered.append(((w, h), metrics, shot, design_metrics))
     finally:
         if browser is not None:
             await browser.close()
+            browser = None
         if pw is not None:
             await pw.stop()
+            pw = None
+
+    # 截图已落盘, 浏览器已关闭; 以下纯分析 (不依赖浏览器)
+    parts = []
+    for (w, h), metrics, shot, design_metrics in rendered:
+        parts.append(f"【视口 {w}x{h}】截图: {shot}")
+        parts.append(_analyze_layout(metrics))
+        if design_metrics:
+            parts += _format_design(design.analyze_design(design_metrics, "light", w))
+        parts.append("")
+
+    # 跨视口对比
+    names = {
+        "hscroll": "横向滚动", "overlaps": "元素重叠", "offRight": "横向溢出",
+        "clipped": "内容截断/溢出", "zeros": "零尺寸元素", "below": "首屏外元素",
+        "smallFont": f"小字号(<{TINY_TEXT_PX}px)",
+    }
+    # 预计算所有视口的布局信号 (每视口算一次, 避免循环内重复计算)
+    signals_map = {(w, h): _layout_signals(m) for (w, h), m, _, __ in rendered}
+    parts.append("【跨视口对比】")
+    found_any = False
+    for key, name in names.items():
+        present = [f"{w}x{h}" for (w, h), _, _, __ in rendered if signals_map[(w, h)][key]]
+        if present:
+            found_any = True
+            parts.append(f"- {name}: {', '.join(present)}")
+    largest = max(vps, key=lambda v: v[0] * v[1])
+    smallest = min(vps, key=lambda v: v[0] * v[1])
+    if smallest != largest:
+        sig_small = signals_map[smallest]
+        sig_large = signals_map[largest]
+        only_small = [
+            name for key, name in names.items()
+            if sig_small[key] and not sig_large[key]
+        ]
+        if only_small:
+            found_any = True
+            parts.append(f"- 仅 {smallest[0]}x{smallest[1]} 出现: {', '.join(only_small)}")
+    if not found_any:
+        parts.append("- 各视口均未发现明显布局问题。")
+
+    # 视觉: 只分析最大面积视口的截图 (控制 API 成本)
+    largest_shot = next(shot for (w, h), _, shot, __ in rendered if (w, h) == largest)
+    parts += ["", f"【视觉描述 (最宽视口 {largest[0]}x{largest[1]})】",
+              await _describe_screenshot(largest_shot, _RESPONSIVE_VISION_PROMPT)]
+    return "\n".join(parts)
 
 
 # 元素信息提取: 在目标元素上 evaluate (元素作为参数传入)
@@ -520,6 +695,14 @@ async def inspect_element(
 
     支持 CSS 选择器 (主文档内; iframe 内容不在范围)。元素截图保存到 output/pages/。
     """
+    if not selector or not isinstance(selector, str) or not selector.strip():
+        raise ValueError("参数错误: selector 不能为空字符串")
+    if not (0 < viewport_width <= 4096):
+        raise ValueError(f"参数错误: viewport_width 需 >0 且 ≤4096, 当前 {viewport_width}")
+    if not (0 < viewport_height <= 4096):
+        raise ValueError(f"参数错误: viewport_height 需 >0 且 ≤4096, 当前 {viewport_height}")
+    if not (1 <= timeout <= 300):
+        raise ValueError(f"参数错误: timeout 需 1~300 秒, 当前 {timeout}")
     target = _normalize_url(url)
     pw = browser = None
     try:
@@ -554,42 +737,45 @@ async def inspect_element(
 
         shot_dir = OUTPUT_DIR / "pages"
         shot_dir.mkdir(parents=True, exist_ok=True)
-        shot = shot_dir / f"elem_{int(time.time())}.png"
+        shot = shot_dir / unique_filename("elem", ".png")
         await loc.screenshot(path=str(shot))
-
-        parts = ["【元素信息】"]
-        if note:
-            parts.append(note.strip())
-        name = info["id"] and f"{info['tag']}#{info['id']}" or (
-            info["cls"] and f"{info['tag']}.{info['cls'].split()[0]}" or info["tag"])
-        parts.append(
-            f"元素: {name}  |  位置 (文档坐标): x={info['x']} y={info['y']} "
-            f"w={info['w']} h={info['h']}  |  在视口内: {'是' if info['inView'] else '否'}"
-        )
-        parts.append(
-            f"样式: position={info['position']} display={info['display']} "
-            f"z-index={info['zIndex']}  |  字号 {info['font']}px 字重 {info['fontWeight']} "
-            f"颜色 {info['color']} 背景 {info['bg']}"
-        )
-        if info["text"]:
-            parts.append(f"文本: 「{info['text']}」")
-        if info["posAnc"]:
-            p = info["posAnc"]
-            pname = p["id"] and f"{p['tag']}#{p['id']}" or (
-                p["cls"] and f"{p['tag']}.{p['cls'].split()[0]}" or p["tag"])
-            parts.append(
-                f"定位祖先: {pname} (position={p['position']}, "
-                f"x={p['x']} y={p['y']} w={p['w']} h={p['h']})"
-            )
-        parts += ["", "【视觉描述】",
-                  await _describe_screenshot(shot, prompt or _ELEM_VISION_PROMPT)]
-        parts += ["", f"【元素截图已保存】{shot}"]
-        return "\n".join(parts)
     finally:
         if browser is not None:
             await browser.close()
+            browser = None
         if pw is not None:
             await pw.stop()
+            pw = None
+
+    # 截图已落盘, 浏览器已关闭; 以下纯分析 (不依赖浏览器)
+    parts = ["【元素信息】"]
+    if note:
+        parts.append(note.strip())
+    name = info["id"] and f"{info['tag']}#{info['id']}" or (
+        info["cls"] and f"{info['tag']}.{info['cls'].split()[0]}" or info["tag"])
+    parts.append(
+        f"元素: {name}  |  位置 (文档坐标): x={info['x']} y={info['y']} "
+        f"w={info['w']} h={info['h']}  |  在视口内: {'是' if info['inView'] else '否'}"
+    )
+    parts.append(
+        f"样式: position={info['position']} display={info['display']} "
+        f"z-index={info['zIndex']}  |  字号 {info['font']}px 字重 {info['fontWeight']} "
+        f"颜色 {info['color']} 背景 {info['bg']}"
+    )
+    if info["text"]:
+        parts.append(f"文本: 「{info['text']}」")
+    if info["posAnc"]:
+        p = info["posAnc"]
+        pname = p["id"] and f"{p['tag']}#{p['id']}" or (
+            p["cls"] and f"{p['tag']}.{p['cls'].split()[0]}" or p["tag"])
+        parts.append(
+            f"定位祖先: {pname} (position={p['position']}, "
+            f"x={p['x']} y={p['y']} w={p['w']} h={p['h']})"
+        )
+    parts += ["", "【视觉描述】",
+              await _describe_screenshot(shot, prompt or _ELEM_VISION_PROMPT)]
+    parts += ["", f"【元素截图已保存】{shot}"]
+    return "\n".join(parts)
 
 
 # 无障碍审计: 6 项纯 DOM 检查, 不依赖视觉模型
@@ -685,7 +871,10 @@ async def audit_page(url: str, timeout: int = 30) -> str:
     try:
         pw, browser = await _launch_browser()
         page = await _render_page(browser, target, 1440, 900, timeout)
-        res = await page.evaluate(_A11Y_JS)
+        try:
+            res = await page.evaluate(_A11Y_JS)
+        except Exception as e:
+            raise RuntimeError(f"页面脚本执行失败: {e}") from e
     finally:
         if browser is not None:
             await browser.close()
